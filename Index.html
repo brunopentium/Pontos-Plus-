@@ -92,6 +92,18 @@
       display: block;
       background: #fff;
     }
+    #paretoTotal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 42px;
+      font-weight: 900;
+      color: #000;
+      pointer-events: none;
+      text-align: center;
+      line-height: 1.1;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -213,6 +225,7 @@
           <input type="month" id="mesPareto" />
         </div>
         <canvas id="paretoChart" height="220"></canvas>
+        <div id="paretoTotal"></div>
         <div id="paretoMensagem" class="message"></div>
       </div>
     </div>
@@ -699,9 +712,11 @@
 
     function renderizarPareto(dados) {
       const mensagem = document.getElementById('paretoMensagem');
+      const totalElemento = document.getElementById('paretoTotal');
       if (!dados.labels.length) {
         mensagem.textContent = 'Nenhuma infração registrada no período selecionado.';
         mensagem.className = 'message';
+        totalElemento.textContent = '';
         if (paretoChart) {
           paretoChart.destroy();
           paretoChart = null;
@@ -711,6 +726,8 @@
 
       mensagem.textContent = '';
       mensagem.className = 'message';
+      const totalInfracoes = dados.valores.reduce((sum, valor) => sum + valor, 0);
+      totalElemento.textContent = `${totalInfracoes} infrações`;
 
       const ctx = document.getElementById('paretoChart').getContext('2d');
       if (paretoChart) {
