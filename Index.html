@@ -90,6 +90,7 @@
       width: 100% !important;
       height: 100% !important;
       display: block;
+      background: #fff;
     }
     table {
       width: 100%;
@@ -106,6 +107,32 @@
     .badge-yes { color: #2e7d32; font-weight: bold; }
     .badge-no { color: #c62828; font-weight: bold; }
     .hidden { display: none; }
+    .tarefa-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .tarefa-button {
+      padding: 12px;
+      background: #eceff1;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+      font-weight: bold;
+    }
+    .tarefa-button:hover { background: #e0e0e0; }
+    .tarefa-button.selected {
+      border-color: #1565c0;
+      background: #e3f2fd;
+      color: #0d47a1;
+    }
+    .login-card {
+      max-width: 480px;
+    }
+    .app-hidden { display: none; }
     @media (max-width: 640px) {
       th, td { font-size: 12px; }
       .tab-btn { flex: 1 1 100%; }
@@ -117,6 +144,26 @@
     <h1>Controle de Infrações do Podcast</h1>
   </header>
   <div class="container">
+    <div id="loginSection" class="card login-card">
+      <h2>Login</h2>
+      <div class="form-group">
+        <label for="loginUsuario">Usuário</label>
+        <input type="text" id="loginUsuario" placeholder="bruno ou alexandre" />
+      </div>
+      <div class="form-group">
+        <label for="loginSenha">Senha</label>
+        <input type="password" id="loginSenha" />
+      </div>
+      <div class="actions">
+        <button id="btnLogin">Entrar</button>
+      </div>
+      <div id="msgLogin" class="message"></div>
+    </div>
+
+    <div id="appSection" class="app-hidden">
+      <div class="card" id="usuarioInfo" style="margin-bottom: 12px;">
+        <strong>Usuário logado:</strong> <span id="usuarioLogado"></span>
+      </div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-infracao">Registrar infração</button>
       <button class="tab-btn" data-tab="tab-tarefas">Gerenciar tarefas</button>
@@ -125,8 +172,12 @@
 
     <div id="tab-infracao" class="card tab-content active">
       <div class="form-group">
-        <label for="tarefaSelect">Tarefa</label>
-        <select id="tarefaSelect"></select>
+        <label>Tarefas do outro responsável</label>
+        <div id="tarefaButtons" class="tarefa-buttons"></div>
+      </div>
+      <div class="form-group">
+        <label for="tarefaSelecionadaNome">Tarefa selecionada</label>
+        <input type="text" id="tarefaSelecionadaNome" readonly placeholder="Nenhuma tarefa selecionada" />
       </div>
       <div class="form-group">
         <label for="responsavel">Responsável</label>
@@ -138,10 +189,7 @@
       </div>
       <div class="form-group">
         <label for="registradoPor">Registrado por</label>
-        <select id="registradoPor">
-          <option value="Bruno">Bruno</option>
-          <option value="Xandão">Xandão</option>
-        </select>
+        <input type="text" id="registradoPor" readonly />
       </div>
       <div class="form-group">
         <label for="dataInfracao">Data da infração</label>
@@ -230,34 +278,17 @@
         <tbody></tbody>
       </table>
     </div>
+    </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
 
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        tabButtons.forEach(b => b.classList.remove('active'));
-        tabContents.forEach(c => c.classList.add('hidden'));
-        btn.classList.add('active');
-        document.getElementById(btn.dataset.tab).classList.remove('hidden');
-        if (btn.dataset.tab === 'tab-historico') {
-          loadHistorico();
-        }
-      });
-    });
-
-    document.getElementById('tarefaSelect').addEventListener('change', (e) => {
-      const tarefa = tarefasAtivas.find(t => t.id === e.target.value);
-      document.getElementById('responsavel').value = tarefa ? tarefa.responsavel : '';
-      atualizarInfoDiaLimite(tarefa);
-    });
-
-    document.getElementById('btnRegistrar').addEventListener('click', registrarInfracao);
-    document.getElementById('btnSalvarTarefa').addEventListener('click', salvarTarefa);
-    document.getElementById('btnLimparTarefa').addEventListener('click', limparFormTarefa);
-    document.getElementById('mesPareto').addEventListener('change', loadPareto);
+    const USERS = {
+      bruno: { senha: 'Cesar177*', nome: 'Bruno', podeGerenciar: true },
+      alexandre: { senha: 'plus123', nome: 'Xandão', podeGerenciar: false },
+    };
 
     const diasSemana = [
       { value: 'segunda', label: 'Segunda-feira' },
@@ -272,6 +303,8 @@
     let tarefasCache = [];
     let tarefasAtivas = [];
     let paretoChart;
+    let currentUser = null;
+    let tarefaSelecionadaId = '';
 
     function getCurrentDateStr() {
       return new Date().toISOString().split('T')[0];
@@ -309,34 +342,46 @@
       info.textContent = `Limite da tarefa: ${label}. Somente é possível registrar no dia seguinte a esse limite.`;
     }
 
-    function loadTarefas() {
-      google.script.run
-        .withSuccessHandler((tarefas) => {
-          tarefasCache = tarefas || [];
-          tarefasAtivas = tarefasCache.filter(t => t.ativa);
-          preencherSelectTarefas();
-          preencherTabelaTarefas();
-          const selecionada = document.getElementById('tarefaSelect').value;
-          const tarefa = tarefasAtivas.find(t => t.id === selecionada);
-          atualizarInfoDiaLimite(tarefa);
-        })
-        .withFailureHandler((err) => {
-          showMessage('msgInfracao', 'Erro ao carregar tarefas: ' + err.message, true);
-        })
-        .getTarefas();
+    function renderizarBotoesTarefas() {
+      const container = document.getElementById('tarefaButtons');
+      container.innerHTML = '';
+      tarefaSelecionadaId = '';
+      document.getElementById('tarefaSelecionadaNome').value = '';
+      document.getElementById('responsavel').value = '';
+      atualizarInfoDiaLimite(null);
+
+      if (!currentUser) return;
+
+      const outrasTarefas = tarefasAtivas.filter((t) => t.responsavel !== currentUser.nome);
+      if (!outrasTarefas.length) {
+        const aviso = document.createElement('div');
+        aviso.textContent = 'Nenhuma tarefa do outro responsável para registrar.';
+        container.appendChild(aviso);
+        return;
+      }
+
+      outrasTarefas.forEach((tarefa) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tarefa-button';
+        btn.dataset.id = tarefa.id;
+        btn.textContent = `${tarefa.nome} (${tarefa.responsavel})`;
+        btn.addEventListener('click', () => selecionarTarefa(tarefa.id));
+        container.appendChild(btn);
+      });
     }
 
-    function preencherSelectTarefas() {
-      const select = document.getElementById('tarefaSelect');
-      select.innerHTML = '<option value="">Selecione uma tarefa</option>';
-      tarefasAtivas.forEach((t) => {
-        const option = document.createElement('option');
-        option.value = t.id;
-        const dia = obterLabelDia(t.diaLimite) || 'dia limite não informado';
-        option.textContent = `${t.nome} (${t.responsavel}) - Limite: ${dia}`;
-        select.appendChild(option);
+    function selecionarTarefa(tarefaId) {
+      tarefaSelecionadaId = tarefaId;
+      const container = document.getElementById('tarefaButtons');
+      container.querySelectorAll('.tarefa-button').forEach((btn) => {
+        btn.classList.toggle('selected', btn.dataset.id === tarefaId);
       });
-      document.getElementById('responsavel').value = '';
+
+      const tarefa = tarefasAtivas.find((t) => t.id === tarefaId);
+      document.getElementById('tarefaSelecionadaNome').value = tarefa ? tarefa.nome : '';
+      document.getElementById('responsavel').value = tarefa ? tarefa.responsavel : '';
+      atualizarInfoDiaLimite(tarefa);
     }
 
     function preencherTabelaTarefas() {
@@ -358,28 +403,54 @@
       });
     }
 
-    function registrarInfracao() {
-      const tarefaId = document.getElementById('tarefaSelect').value;
-      const dataInfracao = document.getElementById('dataInfracao').value || getCurrentDateStr();
-      const registradoPor = document.getElementById('registradoPor').value;
-      const observacao = document.getElementById('observacao').value;
+    function loadTarefas() {
+      google.script.run
+        .withSuccessHandler((tarefas) => {
+          tarefasCache = tarefas || [];
+          tarefasAtivas = tarefasCache.filter(t => t.ativa);
+          renderizarBotoesTarefas();
+          preencherTabelaTarefas();
+        })
+        .withFailureHandler((err) => {
+          showMessage('msgInfracao', 'Erro ao carregar tarefas: ' + err.message, true);
+        })
+        .getTarefas();
+    }
 
-      if (!tarefaId) {
+    function registrarInfracao() {
+      if (!currentUser) {
+        showMessage('msgInfracao', 'Faça login para registrar.', true);
+        return;
+      }
+
+      if (!tarefaSelecionadaId) {
         showMessage('msgInfracao', 'Selecione uma tarefa.', true);
         return;
       }
+
+      const dataInfracao = document.getElementById('dataInfracao').value || getCurrentDateStr();
+      const observacao = document.getElementById('observacao').value;
+
       if (!dataInfracao) {
         showMessage('msgInfracao', 'Informe a data da infração.', true);
         return;
       }
 
-      const payload = { tarefaId, dataInfracao, registradoPor, observacao };
+      if (!confirm('Tem Certeza?')) return;
+
+      const payload = {
+        tarefaId: tarefaSelecionadaId,
+        dataInfracao,
+        registradoPor: currentUser.nome,
+        observacao,
+      };
 
       google.script.run
         .withSuccessHandler((res) => {
           if (res.success) {
             showMessage('msgInfracao', res.message, false);
             document.getElementById('observacao').value = '';
+            alert('Registrado');
             loadHistorico();
             loadPareto();
           } else {
@@ -391,6 +462,81 @@
         })
         .registerInfracao(payload);
     }
+
+    function aplicarPermissoesTabs() {
+      const tabTarefasBtn = document.querySelector('[data-tab="tab-tarefas"]');
+      const tabInfracaoBtn = document.querySelector('[data-tab="tab-infracao"]');
+      if (!currentUser?.podeGerenciar) {
+        tabTarefasBtn.classList.add('hidden');
+        if (tabTarefasBtn.classList.contains('active')) {
+          ativarTab('tab-infracao');
+        }
+      } else {
+        tabTarefasBtn.classList.remove('hidden');
+      }
+      tabInfracaoBtn?.classList.add('active');
+      document.getElementById('tab-infracao').classList.remove('hidden');
+    }
+
+    function ativarTab(tabId) {
+      tabButtons.forEach((btn) => {
+        if (btn.dataset.tab === tabId && !btn.classList.contains('hidden')) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      tabContents.forEach((content) => {
+        content.classList.toggle('hidden', content.id !== tabId);
+      });
+      if (tabId === 'tab-historico') {
+        loadHistorico();
+      }
+    }
+
+    function iniciarAposLogin() {
+      document.getElementById('loginSection').classList.add('app-hidden');
+      document.getElementById('appSection').classList.remove('app-hidden');
+      document.getElementById('usuarioLogado').textContent = currentUser.nome;
+      document.getElementById('registradoPor').value = currentUser.nome;
+      aplicarPermissoesTabs();
+      tarefaSelecionadaId = '';
+      limparFormTarefa();
+      ajustarMaxDataInfracao();
+      inicializarMesPareto();
+      loadTarefas();
+      loadPareto();
+      loadHistorico();
+    }
+
+    function realizarLogin() {
+      const usuarioInput = (document.getElementById('loginUsuario').value || '').trim().toLowerCase();
+      const senhaInput = document.getElementById('loginSenha').value || '';
+      const userInfo = USERS[usuarioInput];
+
+      if (!userInfo || userInfo.senha !== senhaInput) {
+        showMessage('msgLogin', 'Usuário ou senha inválidos.', true);
+        return;
+      }
+
+      currentUser = userInfo;
+      showMessage('msgLogin', '', false);
+      ativarTab('tab-infracao');
+      iniciarAposLogin();
+    }
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('hidden')) return;
+        ativarTab(btn.dataset.tab);
+      });
+    });
+
+    document.getElementById('btnLogin').addEventListener('click', realizarLogin);
+    document.getElementById('btnRegistrar').addEventListener('click', registrarInfracao);
+    document.getElementById('btnSalvarTarefa').addEventListener('click', salvarTarefa);
+    document.getElementById('btnLimparTarefa').addEventListener('click', limparFormTarefa);
+    document.getElementById('mesPareto').addEventListener('change', loadPareto);
 
     function salvarTarefa() {
       const id = document.getElementById('tarefaId').value;
@@ -651,11 +797,8 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       preencherSelectDiaLimite();
-      loadTarefas();
-      limparFormTarefa();
       ajustarMaxDataInfracao();
       inicializarMesPareto();
-      loadPareto();
     });
   </script>
 </body>
