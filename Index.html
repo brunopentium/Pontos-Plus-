@@ -103,6 +103,7 @@
       pointer-events: none;
       text-align: center;
       line-height: 1.1;
+      white-space: pre-line;
     }
     table {
       width: 100%;
@@ -748,7 +749,9 @@
 
       mensagem.textContent = '';
       mensagem.className = 'message';
-      totalElemento.textContent = '';
+      totalElemento.textContent = dados.labels
+        .map((label, index) => `${label}: ${dados.valores[index]}`)
+        .join('\n');
 
       const ctx = document.getElementById('paretoChart').getContext('2d');
       if (paretoChart) {
@@ -762,7 +765,7 @@
           datasets: [
             {
               type: 'bar',
-              label: 'Total de infrações',
+              label: 'Totais por usuário',
               data: dados.valores,
               backgroundColor: '#1565c0',
               borderColor: '#0d47a1',
