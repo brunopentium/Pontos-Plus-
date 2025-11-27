@@ -146,6 +146,16 @@
         <button id="btnRegistrar">Registrar infração</button>
       </div>
       <div id="msgInfracao" class="message"></div>
+
+      <div class="card" id="paretoContainer">
+        <h3>Pareto de Infrações</h3>
+        <div class="form-group">
+          <label for="mesPareto">Mês de referência</label>
+          <input type="month" id="mesPareto" />
+        </div>
+        <canvas id="paretoChart" height="220"></canvas>
+        <div id="paretoMensagem" class="message"></div>
+      </div>
     </div>
 
     <div id="tab-tarefas" class="card tab-content hidden">
@@ -212,7 +222,7 @@
       </table>
     </div>
   </div>
-
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -238,6 +248,7 @@
     document.getElementById('btnRegistrar').addEventListener('click', registrarInfracao);
     document.getElementById('btnSalvarTarefa').addEventListener('click', salvarTarefa);
     document.getElementById('btnLimparTarefa').addEventListener('click', limparFormTarefa);
+    document.getElementById('mesPareto').addEventListener('change', loadPareto);
 
     const diasSemana = [
       { value: 'segunda', label: 'Segunda-feira' },
@@ -251,6 +262,11 @@
 
     let tarefasCache = [];
     let tarefasAtivas = [];
+    let paretoChart;
+
+    function getCurrentDateStr() {
+      return new Date().toISOString().split('T')[0];
+    }
 
     function showMessage(elementId, message, isError = false) {
       const el = document.getElementById(elementId);
@@ -335,7 +351,7 @@
 
     function registrarInfracao() {
       const tarefaId = document.getElementById('tarefaSelect').value;
-      const dataInfracao = document.getElementById('dataInfracao').value;
+      const dataInfracao = document.getElementById('dataInfracao').value || getCurrentDateStr();
       const registradoPor = document.getElementById('registradoPor').value;
       const observacao = document.getElementById('observacao').value;
 
@@ -354,9 +370,9 @@
         .withSuccessHandler((res) => {
           if (res.success) {
             showMessage('msgInfracao', res.message, false);
-            document.getElementById('dataInfracao').value = '';
             document.getElementById('observacao').value = '';
             loadHistorico();
+            loadPareto();
           } else {
             showMessage('msgInfracao', res.message, true);
           }
@@ -466,9 +482,156 @@
         .getInfracoes();
     }
 
+    function prepararDadosPareto(infracoes, mesSelecionado) {
+      const contagem = { Bruno: 0, 'Xandão': 0 };
+      const responsaveisConsiderados = ['Bruno', 'Xandão'];
+
+      infracoes.forEach((inf) => {
+        if (!responsaveisConsiderados.includes(inf.responsavel)) return;
+
+        if (mesSelecionado) {
+          const [ano, mes] = inf.dataInfracao.split('-').map(Number);
+          const [anoFiltro, mesFiltro] = mesSelecionado.split('-').map(Number);
+          if (ano !== anoFiltro || mes !== mesFiltro) return;
+        }
+
+        contagem[inf.responsavel] = (contagem[inf.responsavel] || 0) + 1;
+      });
+
+      const entries = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
+
+      const total = entries.reduce((sum, [, value]) => sum + value, 0);
+      if (total === 0) {
+        return { labels: [], valores: [], cumulativo: [] };
+      }
+      let acumulado = 0;
+      const cumulativo = entries.map(([, value]) => {
+        acumulado += value;
+        return (acumulado / total) * 100;
+      });
+
+      return {
+        labels: entries.map(([nome]) => nome),
+        valores: entries.map(([, value]) => value),
+        cumulativo,
+      };
+    }
+
+    function renderizarPareto(dados) {
+      const mensagem = document.getElementById('paretoMensagem');
+      if (!dados.labels.length) {
+        mensagem.textContent = 'Nenhuma infração registrada no período selecionado.';
+        mensagem.className = 'message';
+        if (paretoChart) {
+          paretoChart.destroy();
+          paretoChart = null;
+        }
+        return;
+      }
+
+      mensagem.textContent = '';
+      mensagem.className = 'message';
+
+      const ctx = document.getElementById('paretoChart').getContext('2d');
+      if (paretoChart) {
+        paretoChart.destroy();
+      }
+
+      paretoChart = new Chart(ctx, {
+        data: {
+          labels: dados.labels,
+          datasets: [
+            {
+              type: 'bar',
+              label: 'Total de infrações',
+              data: dados.valores,
+              backgroundColor: '#1565c0',
+              borderColor: '#0d47a1',
+            },
+            {
+              type: 'line',
+              label: '% acumulado',
+              data: dados.cumulativo,
+              yAxisID: 'y1',
+              borderColor: '#c62828',
+              backgroundColor: '#c62828',
+              tension: 0.3,
+              pointRadius: 5,
+              pointBackgroundColor: '#c62828',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Total',
+              },
+            },
+            y1: {
+              beginAtZero: true,
+              position: 'right',
+              min: 0,
+              max: 100,
+              ticks: {
+                callback: (value) => `${value}%`,
+              },
+              title: {
+                display: true,
+                text: 'Percentual acumulado',
+              },
+              grid: {
+                drawOnChartArea: false,
+              },
+            },
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  if (context.dataset.type === 'line') {
+                    return `${context.formattedValue}% acumulado`;
+                  }
+                  return `${context.parsed.y} infrações`;
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    function loadPareto() {
+      const mesSelecionado = document.getElementById('mesPareto').value;
+      google.script.run
+        .withSuccessHandler((infracoes) => {
+          const dados = prepararDadosPareto(infracoes || [], mesSelecionado);
+          renderizarPareto(dados);
+        })
+        .withFailureHandler((err) => {
+          const mensagem = document.getElementById('paretoMensagem');
+          mensagem.textContent = 'Erro ao carregar gráfico: ' + err.message;
+          mensagem.className = 'message error';
+        })
+        .getInfracoes();
+    }
+
     function ajustarMaxDataInfracao() {
-      const hojeStr = new Date().toISOString().split('T')[0];
-      document.getElementById('dataInfracao').setAttribute('max', hojeStr);
+      const hojeStr = getCurrentDateStr();
+      const input = document.getElementById('dataInfracao');
+      input.value = hojeStr;
+      input.readOnly = true;
+      input.setAttribute('max', hojeStr);
+    }
+
+    function inicializarMesPareto() {
+      const hoje = new Date();
+      const mesStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+      document.getElementById('mesPareto').value = mesStr;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -476,6 +639,8 @@
       loadTarefas();
       limparFormTarefa();
       ajustarMaxDataInfracao();
+      inicializarMesPareto();
+      loadPareto();
     });
   </script>
 </body>
