@@ -104,7 +104,7 @@ function getTarefas() {
   if (lastRow < 2) return [];
   const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
   return data.map((row) => ({
-    id: row[0],
+    id: row[0] != null ? row[0].toString() : '',
     nome: row[1],
     responsavel: row[2],
     ativa: row[3] === true || row[3] === 'TRUE' || row[3] === 'true',
@@ -119,7 +119,7 @@ function saveTarefa(tarefa) {
 
   if (tarefa.id) {
     const range = sheet.getRange(2, 1, Math.max(lastRow - 1, 1), 1).getValues();
-    const rowIndex = range.findIndex((r) => r[0] === tarefa.id);
+    const rowIndex = range.findIndex((r) => (r[0] != null ? r[0].toString() : '') === tarefa.id.toString());
     if (rowIndex !== -1) {
       const rowNumber = rowIndex + 2;
       sheet.getRange(rowNumber, 1, 1, 4).setValues([
@@ -139,7 +139,7 @@ function deleteTarefa(id) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TAREFAS);
   const lastRow = sheet.getLastRow();
   const ids = sheet.getRange(2, 1, Math.max(lastRow - 1, 1), 1).getValues();
-  const index = ids.findIndex((r) => r[0] === id);
+  const index = ids.findIndex((r) => (r[0] != null ? r[0].toString() : '') === id.toString());
   if (index !== -1) {
     sheet.deleteRow(index + 2);
     return { success: true, message: 'Tarefa excluída.' };
