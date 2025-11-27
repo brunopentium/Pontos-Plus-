@@ -486,14 +486,20 @@
       const contagem = { Bruno: 0, 'Xandão': 0 };
       const responsaveisConsiderados = ['Bruno', 'Xandão'];
 
+      const isMesSelecionado = (dataRef) => {
+        if (!mesSelecionado) return true;
+        if (!dataRef || typeof dataRef !== 'string' || !dataRef.includes('-')) return false;
+        const [ano, mes] = dataRef.split('-').map(Number);
+        const [anoFiltro, mesFiltro] = mesSelecionado.split('-').map(Number);
+        return ano === anoFiltro && mes === mesFiltro;
+      };
+
       infracoes.forEach((inf) => {
         if (!responsaveisConsiderados.includes(inf.responsavel)) return;
+        if (!inf.contaPonto) return;
 
-        if (mesSelecionado) {
-          const [ano, mes] = inf.dataInfracao.split('-').map(Number);
-          const [anoFiltro, mesFiltro] = mesSelecionado.split('-').map(Number);
-          if (ano !== anoFiltro || mes !== mesFiltro) return;
-        }
+        const dataReferencia = inf.dataRegistro || inf.dataInfracao;
+        if (!isMesSelecionado(dataReferencia)) return;
 
         contagem[inf.responsavel] = (contagem[inf.responsavel] || 0) + 1;
       });
