@@ -1,6 +1,41 @@
 const SHEET_TAREFAS = 'Tarefas';
 const SHEET_INFRACOES = 'Infracoes';
 const SHEET_CONFIG = 'Config';
+const DIAS_SEMANA = {
+  domingo: 0,
+  segunda: 1,
+  'segunda-feira': 1,
+  terca: 2,
+  'terça': 2,
+  'terça-feira': 2,
+  quarta: 3,
+  'quarta-feira': 3,
+  quinta: 4,
+  'quinta-feira': 4,
+  sexta: 5,
+  'sexta-feira': 5,
+  sabado: 6,
+  sábado: 6,
+};
+const NOMES_DIAS_SEMANA = [
+  'Domingo',
+  'Segunda-feira',
+  'Terça-feira',
+  'Quarta-feira',
+  'Quinta-feira',
+  'Sexta-feira',
+  'Sábado',
+];
+
+function getDiaSemanaIndex_(valor) {
+  if (!valor) return undefined;
+  const chave = valor.toString().toLowerCase();
+  return DIAS_SEMANA[chave];
+}
+
+function getDiaSemanaNome_(indice) {
+  return NOMES_DIAS_SEMANA[indice] || '';
+}
 
 function doGet(e) {
   ensureSetup_();
@@ -11,14 +46,20 @@ function ensureSetup_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   let tarefasSheet = ss.getSheetByName(SHEET_TAREFAS);
+  const tarefasHeaders = ['ID', 'Nome', 'Responsavel', 'DiaLimite', 'Ativa'];
   if (!tarefasSheet) {
     tarefasSheet = ss.insertSheet(SHEET_TAREFAS);
-    tarefasSheet.appendRow(['ID', 'Nome', 'Responsavel', 'Ativa']);
+    tarefasSheet.appendRow(tarefasHeaders);
   } else {
-    const headers = tarefasSheet.getRange(1, 1, 1, 4).getValues()[0];
-    if (headers.join('') === '') {
-      tarefasSheet.getRange(1, 1, 1, 4).setValues([
-        ['ID', 'Nome', 'Responsavel', 'Ativa'],
+    const headers = tarefasSheet.getRange(1, 1, 1, tarefasHeaders.length).getValues()[0];
+    const headersInvalidos =
+      headers.join('') === '' ||
+      headers.length < tarefasHeaders.length ||
+      tarefasHeaders.some((h, idx) => headers[idx] !== h);
+
+    if (headersInvalidos) {
+      tarefasSheet.getRange(1, 1, 1, tarefasHeaders.length).setValues([
+        tarefasHeaders,
       ]);
     }
   }
@@ -102,12 +143,13 @@ function getTarefas() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TAREFAS);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   return data.map((row) => ({
     id: row[0] != null ? row[0].toString() : '',
     nome: row[1],
     responsavel: row[2],
-    ativa: row[3] === true || row[3] === 'TRUE' || row[3] === 'true',
+    diaLimite: row[3],
+    ativa: row[4] === true || row[4] === 'TRUE' || row[4] === 'true',
   }));
 }
 
@@ -116,21 +158,26 @@ function saveTarefa(tarefa) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TAREFAS);
   const lastRow = sheet.getLastRow();
   const ativa = tarefa.ativa === true || tarefa.ativa === 'true' || tarefa.ativa === 'Sim';
+  const diaLimite = tarefa.diaLimite || '';
+
+  if (!diaLimite) {
+    return { success: false, message: 'Selecione o dia limite da tarefa.' };
+  }
 
   if (tarefa.id) {
     const range = sheet.getRange(2, 1, Math.max(lastRow - 1, 1), 1).getValues();
     const rowIndex = range.findIndex((r) => (r[0] != null ? r[0].toString() : '') === tarefa.id.toString());
     if (rowIndex !== -1) {
       const rowNumber = rowIndex + 2;
-      sheet.getRange(rowNumber, 1, 1, 4).setValues([
-        [tarefa.id, tarefa.nome, tarefa.responsavel, ativa],
+      sheet.getRange(rowNumber, 1, 1, 5).setValues([
+        [tarefa.id, tarefa.nome, tarefa.responsavel, diaLimite, ativa],
       ]);
       return { success: true, message: 'Tarefa atualizada com sucesso.' };
     }
   }
 
   const newId = new Date().getTime().toString();
-  sheet.appendRow([newId, tarefa.nome, tarefa.responsavel, ativa]);
+  sheet.appendRow([newId, tarefa.nome, tarefa.responsavel, diaLimite, ativa]);
   return { success: true, message: 'Tarefa criada com sucesso.' };
 }
 
@@ -150,13 +197,24 @@ function deleteTarefa(id) {
 function registerInfracao(data) {
   ensureSetup_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const tarefasSheet = ss.getSheetByName(SHEET_TAREFAS);
   const infracoesSheet = ss.getSheetByName(SHEET_INFRACOES);
 
   const tarefas = getTarefas();
   const tarefa = tarefas.find((t) => t.id === data.tarefaId);
   if (!tarefa) {
     return { success: false, message: 'Tarefa não encontrada.' };
+  }
+
+  if (!data.dataInfracao) {
+    return { success: false, message: 'Informe a data da infração.' };
+  }
+
+  const diaLimiteIndex = getDiaSemanaIndex_(tarefa.diaLimite);
+  if (diaLimiteIndex === undefined) {
+    return {
+      success: false,
+      message: 'A tarefa selecionada não possui um dia limite configurado.',
+    };
   }
 
   const config = getConfig_();
@@ -166,6 +224,23 @@ function registerInfracao(data) {
   const dataRegistroDia = new Date(Utilities.formatDate(dataRegistro, tz, 'yyyy-MM-dd'));
   const dataInfracaoDate = new Date(`${data.dataInfracao}T00:00:00`);
   dataInfracaoDate.setHours(0, 0, 0, 0);
+
+  if (dataInfracaoDate.getTime() > dataRegistroDia.getTime()) {
+    return {
+      success: false,
+      message: 'Não é permitido registrar infrações em datas futuras.',
+    };
+  }
+
+  const diaPermitido = (diaLimiteIndex + 1) % 7;
+  if (dataInfracaoDate.getDay() !== diaPermitido) {
+    const diaSeguinteNome = getDiaSemanaNome_(diaPermitido);
+    const diaLimiteNome = getDiaSemanaNome_(diaLimiteIndex);
+    return {
+      success: false,
+      message: `A data da infração deve ser o dia seguinte (${diaSeguinteNome}) ao limite (${diaLimiteNome}) da tarefa.`,
+    };
+  }
 
   const dataLimite = new Date(dataInfracaoDate);
   dataLimite.setDate(dataLimite.getDate() + diasLimite);

@@ -124,6 +124,10 @@
         <input type="text" id="responsavel" readonly />
       </div>
       <div class="form-group">
+        <label>Dia limite da tarefa</label>
+        <div id="infoDiaLimite">Selecione uma tarefa para ver o dia limite.</div>
+      </div>
+      <div class="form-group">
         <label for="registradoPor">Registrado por</label>
         <select id="registradoPor">
           <option value="Bruno">Bruno</option>
@@ -160,6 +164,10 @@
         </select>
       </div>
       <div class="form-group">
+        <label for="tarefaDiaLimite">Dia da semana (data limite)</label>
+        <select id="tarefaDiaLimite"></select>
+      </div>
+      <div class="form-group">
         <label for="tarefaAtiva">Ativa?</label>
         <select id="tarefaAtiva">
           <option value="true">Sim</option>
@@ -177,6 +185,7 @@
           <tr>
             <th>Nome</th>
             <th>Responsável</th>
+            <th>Dia limite</th>
             <th>Ativa</th>
             <th>Ações</th>
           </tr>
@@ -223,11 +232,22 @@
     document.getElementById('tarefaSelect').addEventListener('change', (e) => {
       const tarefa = tarefasAtivas.find(t => t.id === e.target.value);
       document.getElementById('responsavel').value = tarefa ? tarefa.responsavel : '';
+      atualizarInfoDiaLimite(tarefa);
     });
 
     document.getElementById('btnRegistrar').addEventListener('click', registrarInfracao);
     document.getElementById('btnSalvarTarefa').addEventListener('click', salvarTarefa);
     document.getElementById('btnLimparTarefa').addEventListener('click', limparFormTarefa);
+
+    const diasSemana = [
+      { value: 'segunda', label: 'Segunda-feira' },
+      { value: 'terca', label: 'Terça-feira' },
+      { value: 'quarta', label: 'Quarta-feira' },
+      { value: 'quinta', label: 'Quinta-feira' },
+      { value: 'sexta', label: 'Sexta-feira' },
+      { value: 'sabado', label: 'Sábado' },
+      { value: 'domingo', label: 'Domingo' },
+    ];
 
     let tarefasCache = [];
     let tarefasAtivas = [];
@@ -238,6 +258,32 @@
       el.className = 'message ' + (isError ? 'error' : 'success');
     }
 
+    function preencherSelectDiaLimite() {
+      const select = document.getElementById('tarefaDiaLimite');
+      select.innerHTML = '<option value="">Selecione o dia limite</option>';
+      diasSemana.forEach((d) => {
+        const option = document.createElement('option');
+        option.value = d.value;
+        option.textContent = d.label;
+        select.appendChild(option);
+      });
+    }
+
+    function obterLabelDia(valor) {
+      const dia = diasSemana.find(d => d.value === valor);
+      return dia ? dia.label : '';
+    }
+
+    function atualizarInfoDiaLimite(tarefa) {
+      const info = document.getElementById('infoDiaLimite');
+      if (!tarefa || !tarefa.diaLimite) {
+        info.textContent = 'Selecione uma tarefa para ver o dia limite.';
+        return;
+      }
+      const label = obterLabelDia(tarefa.diaLimite) || 'dia não informado';
+      info.textContent = `Limite da tarefa: ${label}. Somente é possível registrar no dia seguinte a esse limite.`;
+    }
+
     function loadTarefas() {
       google.script.run
         .withSuccessHandler((tarefas) => {
@@ -245,6 +291,9 @@
           tarefasAtivas = tarefasCache.filter(t => t.ativa);
           preencherSelectTarefas();
           preencherTabelaTarefas();
+          const selecionada = document.getElementById('tarefaSelect').value;
+          const tarefa = tarefasAtivas.find(t => t.id === selecionada);
+          atualizarInfoDiaLimite(tarefa);
         })
         .withFailureHandler((err) => {
           showMessage('msgInfracao', 'Erro ao carregar tarefas: ' + err.message, true);
@@ -258,7 +307,8 @@
       tarefasAtivas.forEach((t) => {
         const option = document.createElement('option');
         option.value = t.id;
-        option.textContent = `${t.nome} (${t.responsavel})`;
+        const dia = obterLabelDia(t.diaLimite) || 'dia limite não informado';
+        option.textContent = `${t.nome} (${t.responsavel}) - Limite: ${dia}`;
         select.appendChild(option);
       });
       document.getElementById('responsavel').value = '';
@@ -272,6 +322,7 @@
         tr.innerHTML = `
           <td>${t.nome}</td>
           <td>${t.responsavel}</td>
+          <td>${obterLabelDia(t.diaLimite) || 'Não informado'}</td>
           <td>${t.ativa ? 'Sim' : 'Não'}</td>
           <td>
             <button class="secondary" onclick="editarTarefa('${t.id}')">Editar</button>
@@ -320,6 +371,7 @@
       const id = document.getElementById('tarefaId').value;
       const nome = document.getElementById('tarefaNome').value.trim();
       const responsavel = document.getElementById('tarefaResponsavel').value;
+      const diaLimite = document.getElementById('tarefaDiaLimite').value;
       const ativa = document.getElementById('tarefaAtiva').value === 'true';
 
       if (!nome) {
@@ -327,7 +379,12 @@
         return;
       }
 
-      const payload = { id, nome, responsavel, ativa };
+      if (!diaLimite) {
+        showMessage('msgTarefa', 'Selecione o dia limite da tarefa.', true);
+        return;
+      }
+
+      const payload = { id, nome, responsavel, diaLimite, ativa };
 
       google.script.run
         .withSuccessHandler((res) => {
@@ -349,6 +406,7 @@
       document.getElementById('tarefaId').value = '';
       document.getElementById('tarefaNome').value = '';
       document.getElementById('tarefaResponsavel').value = 'Bruno';
+      document.getElementById('tarefaDiaLimite').value = '';
       document.getElementById('tarefaAtiva').value = 'true';
       showMessage('msgTarefa', '', false);
     }
@@ -359,6 +417,7 @@
       document.getElementById('tarefaId').value = tarefa.id;
       document.getElementById('tarefaNome').value = tarefa.nome;
       document.getElementById('tarefaResponsavel').value = tarefa.responsavel;
+      document.getElementById('tarefaDiaLimite').value = tarefa.diaLimite || '';
       document.getElementById('tarefaAtiva').value = tarefa.ativa ? 'true' : 'false';
       showMessage('msgTarefa', 'Editando tarefa selecionada.', false);
     }
@@ -407,9 +466,16 @@
         .getInfracoes();
     }
 
+    function ajustarMaxDataInfracao() {
+      const hojeStr = new Date().toISOString().split('T')[0];
+      document.getElementById('dataInfracao').setAttribute('max', hojeStr);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+      preencherSelectDiaLimite();
       loadTarefas();
       limparFormTarefa();
+      ajustarMaxDataInfracao();
     });
   </script>
 </body>
