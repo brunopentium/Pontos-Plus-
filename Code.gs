@@ -293,6 +293,14 @@ function getInfracoes() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_INFRACOES);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
+  const tz = Session.getScriptTimeZone();
+  const formatDate = (valor) => {
+    if (!valor) return '';
+    if (Object.prototype.toString.call(valor) === '[object Date]' && !isNaN(valor)) {
+      return Utilities.formatDate(valor, tz, 'yyyy-MM-dd');
+    }
+    return valor.toString();
+  };
   const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
   const list = data.map((row) => ({
     id: row[0],
@@ -300,8 +308,8 @@ function getInfracoes() {
     nomeTarefa: row[2],
     responsavel: row[3],
     registradoPor: row[4],
-    dataInfracao: row[5],
-    dataRegistro: row[6],
+    dataInfracao: formatDate(row[5]),
+    dataRegistro: formatDate(row[6]),
     dentroPrazo: row[7] === true || row[7] === 'TRUE' || row[7] === 'true',
     contaPonto: row[8] === true || row[8] === 'TRUE' || row[8] === 'true',
     observacao: row[9] || '',
