@@ -322,6 +322,28 @@
     let currentUser = null;
     let tarefaSelecionadaId = '';
 
+    const barValuePlugin = {
+      id: 'barValuePlugin',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        ctx.save();
+        ctx.font = 'bold 18px Arial';
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((bar, index) => {
+            const valor = dataset.data[index];
+            ctx.fillText(valor, bar.x, bar.y - 6);
+          });
+        });
+
+        ctx.restore();
+      },
+    };
+
     function getCurrentDateStr() {
       return new Date().toISOString().split('T')[0];
     }
@@ -726,8 +748,7 @@
 
       mensagem.textContent = '';
       mensagem.className = 'message';
-      const totalInfracoes = dados.valores.reduce((sum, valor) => sum + valor, 0);
-      totalElemento.textContent = `${totalInfracoes} infrações`;
+      totalElemento.textContent = '';
 
       const ctx = document.getElementById('paretoChart').getContext('2d');
       if (paretoChart) {
@@ -766,8 +787,16 @@
                 label: (context) => `${context.parsed.y} infrações`,
               },
             },
+            legend: {
+              labels: {
+                font: {
+                  weight: 'bold',
+                },
+              },
+            },
           },
         },
+        plugins: [barValuePlugin],
       });
     }
 
