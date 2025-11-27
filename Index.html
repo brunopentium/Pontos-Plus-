@@ -306,6 +306,32 @@
     let tarefasCache = [];
     let tarefasAtivas = [];
     let paretoChart;
+
+    const paretoValueLabelsPlugin = {
+      id: 'paretoValueLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        ctx.save();
+
+        chart.data.datasets.forEach((dataset, datasetIndex) => {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((element, index) => {
+            const value = dataset.data[index];
+            if (value === null || value === undefined) return;
+
+            ctx.fillStyle = '#2c2c2c';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+
+            const position = element.tooltipPosition();
+            ctx.fillText(value, position.x, position.y - 6);
+          });
+        });
+
+        ctx.restore();
+      },
+    };
     let currentUser = null;
     let tarefaSelecionadaId = '';
 
@@ -749,8 +775,16 @@
                 label: (context) => `${context.parsed.y} infrações`,
               },
             },
+            legend: {
+              labels: {
+                font: {
+                  size: 12,
+                },
+              },
+            },
           },
         },
+        plugins: [paretoValueLabelsPlugin],
       });
     }
 
