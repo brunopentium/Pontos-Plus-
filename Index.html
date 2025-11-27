@@ -122,6 +122,7 @@
       text-align: left;
       transition: all 0.2s ease;
       font-weight: bold;
+      color: #2c2c2c;
     }
     .tarefa-button:hover { background: #e0e0e0; }
     .tarefa-button.selected {
@@ -133,6 +134,7 @@
       max-width: 480px;
     }
     .app-hidden { display: none; }
+    .hidden-field { display: none; }
     @media (max-width: 640px) {
       th, td { font-size: 12px; }
       .tab-btn { flex: 1 1 100%; }
@@ -175,23 +177,23 @@
         <label>Tarefas do outro responsável</label>
         <div id="tarefaButtons" class="tarefa-buttons"></div>
       </div>
-      <div class="form-group">
+      <div class="form-group hidden-field">
         <label for="tarefaSelecionadaNome">Tarefa selecionada</label>
         <input type="text" id="tarefaSelecionadaNome" readonly placeholder="Nenhuma tarefa selecionada" />
       </div>
-      <div class="form-group">
+      <div class="form-group hidden-field">
         <label for="responsavel">Responsável</label>
         <input type="text" id="responsavel" readonly />
       </div>
-      <div class="form-group">
+      <div class="form-group hidden-field">
         <label>Dia limite da tarefa</label>
         <div id="infoDiaLimite">Selecione uma tarefa para ver o dia limite.</div>
       </div>
-      <div class="form-group">
+      <div class="form-group hidden-field">
         <label for="registradoPor">Registrado por</label>
         <input type="text" id="registradoPor" readonly />
       </div>
-      <div class="form-group">
+      <div class="form-group hidden-field">
         <label for="dataInfracao">Data da infração</label>
         <input type="date" id="dataInfracao" />
       </div>
@@ -289,6 +291,7 @@
       bruno: { senha: 'Cesar177*', nome: 'Bruno', podeGerenciar: true },
       alexandre: { senha: 'plus123', nome: 'Xandão', podeGerenciar: false },
     };
+    const STORAGE_USER_KEY = 'pontosPlusCurrentUser';
 
     const diasSemana = [
       { value: 'segunda', label: 'Segunda-feira' },
@@ -509,6 +512,27 @@
       loadHistorico();
     }
 
+    function salvarLoginLocal(usuarioChave) {
+      try {
+        localStorage.setItem(STORAGE_USER_KEY, usuarioChave);
+      } catch (e) {
+        console.warn('Não foi possível salvar o login localmente.', e);
+      }
+    }
+
+    function restaurarLogin() {
+      try {
+        const savedUser = localStorage.getItem(STORAGE_USER_KEY);
+        if (savedUser && USERS[savedUser]) {
+          currentUser = USERS[savedUser];
+          ativarTab('tab-infracao');
+          iniciarAposLogin();
+        }
+      } catch (e) {
+        console.warn('Não foi possível restaurar o login salvo.', e);
+      }
+    }
+
     function realizarLogin() {
       const usuarioInput = (document.getElementById('loginUsuario').value || '').trim().toLowerCase();
       const senhaInput = document.getElementById('loginSenha').value || '';
@@ -520,6 +544,7 @@
       }
 
       currentUser = userInfo;
+      salvarLoginLocal(usuarioInput);
       showMessage('msgLogin', '', false);
       ativarTab('tab-infracao');
       iniciarAposLogin();
@@ -663,18 +688,12 @@
 
       const total = entries.reduce((sum, [, value]) => sum + value, 0);
       if (total === 0) {
-        return { labels: [], valores: [], cumulativo: [] };
+        return { labels: [], valores: [] };
       }
-      let acumulado = 0;
-      const cumulativo = entries.map(([, value]) => {
-        acumulado += value;
-        return (acumulado / total) * 100;
-      });
 
       return {
         labels: entries.map(([nome]) => nome),
         valores: entries.map(([, value]) => value),
-        cumulativo,
       };
     }
 
@@ -699,6 +718,7 @@
       }
 
       paretoChart = new Chart(ctx, {
+        type: 'bar',
         data: {
           labels: dados.labels,
           datasets: [
@@ -708,17 +728,6 @@
               data: dados.valores,
               backgroundColor: '#1565c0',
               borderColor: '#0d47a1',
-            },
-            {
-              type: 'line',
-              label: '% acumulado',
-              data: dados.cumulativo,
-              yAxisID: 'y1',
-              borderColor: '#c62828',
-              backgroundColor: '#c62828',
-              tension: 0.3,
-              pointRadius: 5,
-              pointBackgroundColor: '#c62828',
             },
           ],
         },
@@ -733,32 +742,11 @@
                 text: 'Total',
               },
             },
-            y1: {
-              beginAtZero: true,
-              position: 'right',
-              min: 0,
-              max: 100,
-              ticks: {
-                callback: (value) => `${value}%`,
-              },
-              title: {
-                display: true,
-                text: 'Percentual acumulado',
-              },
-              grid: {
-                drawOnChartArea: false,
-              },
-            },
           },
           plugins: {
             tooltip: {
               callbacks: {
-                label: (context) => {
-                  if (context.dataset.type === 'line') {
-                    return `${context.formattedValue}% acumulado`;
-                  }
-                  return `${context.parsed.y} infrações`;
-                },
+                label: (context) => `${context.parsed.y} infrações`,
               },
             },
           },
@@ -799,6 +787,7 @@
       preencherSelectDiaLimite();
       ajustarMaxDataInfracao();
       inicializarMesPareto();
+      restaurarLogin();
     });
   </script>
 </body>
