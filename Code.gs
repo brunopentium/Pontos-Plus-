@@ -37,6 +37,12 @@ function getDiaSemanaNome_(indice) {
   return NOMES_DIAS_SEMANA[indice] || '';
 }
 
+function createDateWithoutTime_(year, month, day) {
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 function doGet(e) {
   ensureSetup_();
   return HtmlService.createHtmlOutputFromFile('Index').setTitle('Controle de Infrações');
@@ -221,9 +227,18 @@ function registerInfracao(data) {
   const diasLimite = Number(config.dias_limite_registro) || 1;
   const tz = Session.getScriptTimeZone();
   const dataRegistro = new Date();
-  const dataRegistroDia = new Date(Utilities.formatDate(dataRegistro, tz, 'yyyy-MM-dd'));
-  const dataInfracaoDate = new Date(`${data.dataInfracao}T00:00:00`);
-  dataInfracaoDate.setHours(0, 0, 0, 0);
+  const dataRegistroDia = createDateWithoutTime_(
+    dataRegistro.getFullYear(),
+    dataRegistro.getMonth() + 1,
+    dataRegistro.getDate()
+  );
+
+  const [anoInf, mesInf, diaInf] = (data.dataInfracao || '').split('-').map(Number);
+  const dataInfracaoDate = createDateWithoutTime_(anoInf, mesInf, diaInf);
+
+  if (isNaN(dataInfracaoDate.getTime())) {
+    return { success: false, message: 'Data da infração inválida.' };
+  }
 
   if (dataInfracaoDate.getTime() > dataRegistroDia.getTime()) {
     return {
